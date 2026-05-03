@@ -20,9 +20,7 @@
       --yellow: #facc15;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
@@ -41,7 +39,7 @@
 
     .card {
       width: 100%;
-      max-width: 460px;
+      max-width: 470px;
       background: rgba(17, 24, 39, 0.96);
       border: 1px solid var(--border);
       border-radius: 22px;
@@ -116,26 +114,17 @@
       transition: transform 0.08s ease, opacity 0.2s ease;
     }
 
-    button:active {
-      transform: scale(0.98);
-    }
+    button:active { transform: scale(0.98); }
 
     button:disabled {
       opacity: 0.55;
       cursor: not-allowed;
     }
 
-    .iniciar {
-      background: linear-gradient(135deg, var(--green-dark), var(--green));
-    }
-
-    .parar {
-      background: linear-gradient(135deg, #7f1d1d, var(--red));
-    }
-
-    .teste {
-      background: linear-gradient(135deg, #334155, #475569);
-    }
+    .iniciar { background: linear-gradient(135deg, var(--green-dark), var(--green)); }
+    .parar { background: linear-gradient(135deg, #7f1d1d, var(--red)); }
+    .teste { background: linear-gradient(135deg, #334155, #475569); }
+    .wake { background: linear-gradient(135deg, #581c87, #7e22ce); }
 
     .status {
       margin-top: 18px;
@@ -200,6 +189,7 @@
     <input id="nomeMotoboy" placeholder="Ex: João" autocomplete="name">
 
     <button id="btnTeste" class="teste" onclick="testarPermissao()">TESTAR PERMISSÃO DE LOCALIZAÇÃO</button>
+    <button id="btnWake" class="wake" onclick="alternarTelaAtiva()">MANTER TELA ATIVA: DESLIGADO</button>
     <button id="btnIniciar" class="iniciar" onclick="iniciarRastreamento()">INICIAR RASTREAMENTO</button>
     <button id="btnParar" class="parar" onclick="pararRastreamento()">PARAR RASTREAMENTO</button>
 
@@ -208,7 +198,7 @@
     </div>
 
     <div class="rodape">
-      Use apenas durante o expediente/entregas e com autorização do motoboy.
+      Para funcionar melhor, mantenha esta tela aberta durante a entrega. Se minimizar, o celular pode pausar o rastreamento.
     </div>
   </div>
 
@@ -218,6 +208,8 @@
     let watchId = null;
     let nomeAtual = "";
     let ultimoEnvio = 0;
+    let wakeLock = null;
+    let telaAtivaDesejada = false;
 
     function limparNome(nome) {
       return nome
@@ -242,6 +234,11 @@
       document.getElementById("nomeMotoboy").disabled = rastreando;
     }
 
+    function atualizarBotaoWake() {
+      const btn = document.getElementById("btnWake");
+      btn.innerText = wakeLock ? "MANTER TELA ATIVA: LIGADO" : "MANTER TELA ATIVA: DESLIGADO";
+    }
+
     function mostrarDiagnosticoInicial() {
       const aviso = document.getElementById("avisoHttps");
       const protocolo = window.location.protocol;
@@ -264,14 +261,14 @@
         aviso.innerHTML =
           "⚠️ <b>O navegador NÃO vai liberar localização nesse endereço.</b><br><br>" +
           "Você abriu como: <br><b>" + href + "</b><br><br>" +
-          "Para aparecer a opção de permitir localização, envie este arquivo para um site com <b>HTTPS</b>, como Firebase Hosting ou Vercel.<br><br>" +
-          "Abrir direto da pasta Downloads geralmente aparece como <b>file://</b> e não libera localização.";
+          "Para aparecer a opção de permitir localização, envie este arquivo para um site com <b>HTTPS</b>, como Firebase Hosting ou Vercel.";
         aviso.style.borderColor = "rgba(253, 230, 138, 0.5)";
         return false;
       }
 
       aviso.innerHTML =
-        "✅ Endereço seguro detectado. A permissão de localização deve aparecer ao clicar em <b>TESTAR</b> ou <b>INICIAR RASTREAMENTO</b>.";
+        "✅ Endereço seguro detectado.<br><br>" +
+        "⚠️ Para não perder a localização, mantenha esta página aberta. O botão <b>MANTER TELA ATIVA</b> tenta evitar que a tela apague, mas se o app for minimizado o Android/iPhone ainda pode pausar o rastreamento.";
       aviso.style.borderColor = "rgba(34, 197, 94, 0.45)";
       return true;
     }
@@ -283,9 +280,61 @@
 
       try {
         const result = await navigator.permissions.query({ name: "geolocation" });
-        return result.state; // granted, denied ou prompt
+        return result.state;
       } catch (e) {
         return "indisponivel";
+      }
+    }
+
+    async function pedirTelaAtiva() {
+      if (!("wakeLock" in navigator)) {
+        setStatus(
+          "⚠️ Este navegador não suporta o recurso de manter tela ativa. Mantenha a tela ligada manualmente nas configurações do celular.",
+          "aviso"
+        );
+        return false;
+      }
+
+      try {
+        wakeLock = await navigator.wakeLock.request("screen");
+
+        wakeLock.addEventListener("release", () => {
+          wakeLock = null;
+          atualizarBotaoWake();
+        });
+
+        atualizarBotaoWake();
+        return true;
+      } catch (e) {
+        setStatus(
+          "⚠️ Não foi possível manter a tela ativa. Motivo: " + e.message,
+          "aviso"
+        );
+        wakeLock = null;
+        atualizarBotaoWake();
+        return false;
+      }
+    }
+
+    async function alternarTelaAtiva() {
+      telaAtivaDesejada = !telaAtivaDesejada;
+
+      if (telaAtivaDesejada) {
+        const ok = await pedirTelaAtiva();
+        if (ok) {
+          setStatus(
+            "✅ Modo manter tela ativa ligado.<br><br>" +
+            "Deixe o celular nesta tela durante a entrega para reduzir as pausas do rastreamento.",
+            "ok"
+          );
+        }
+      } else {
+        if (wakeLock) {
+          try { await wakeLock.release(); } catch (e) {}
+          wakeLock = null;
+        }
+        atualizarBotaoWake();
+        setStatus("Modo manter tela ativa desligado.", "aviso");
       }
     }
 
@@ -336,7 +385,6 @@
     async function enviarLocalizacao(position) {
       const agora = Date.now();
 
-      // Evita spam excessivo no Firebase. Envia no máximo a cada 5 segundos.
       if (agora - ultimoEnvio < 5000) {
         return;
       }
@@ -352,7 +400,8 @@
         lng: lng,
         precisao: precisao,
         ativo: true,
-        ultima_atualizacao: agora
+        ultima_atualizacao: agora,
+        visivel: !document.hidden
       };
 
       const id = limparNome(nomeAtual);
@@ -360,9 +409,7 @@
       try {
         await fetch(`${FIREBASE_URL}/motoboys/${id}.json`, {
           method: "PATCH",
-          headers: {
-            "Content-Type": "application/json"
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(dados)
         });
 
@@ -372,7 +419,8 @@
            <b>Latitude:</b> ${lat.toFixed(6)}<br>
            <b>Longitude:</b> ${lng.toFixed(6)}<br>
            <b>Precisão:</b> ${Math.round(precisao)}m<br>
-           <b>Horário:</b> ${new Date().toLocaleTimeString("pt-BR")}`,
+           <b>Horário:</b> ${new Date().toLocaleTimeString("pt-BR")}<br><br>
+           ${document.hidden ? "⚠️ Página em segundo plano. O celular pode pausar novas atualizações." : "Tela aberta e ativa."}`,
           "ok"
         );
       } catch (e) {
@@ -386,12 +434,7 @@
       if (error.code === 1) {
         msg =
           "Permissão de localização negada ou bloqueada.<br><br>" +
-          "Faça assim no Android/Chrome:<br>" +
-          "1. Toque no cadeado ao lado do endereço do site.<br>" +
-          "2. Entre em Permissões.<br>" +
-          "3. Em Localização, marque Permitir.<br>" +
-          "4. Recarregue a página.<br><br>" +
-          "Se não aparecer o cadeado/permissão, provavelmente o arquivo não está em HTTPS.";
+          "No Android/Chrome: cadeado ao lado do endereço > Permissões > Localização > Permitir.";
       }
 
       if (error.code === 2) {
@@ -403,7 +446,7 @@
       if (error.code === 3) {
         msg =
           "Tempo esgotado ao tentar localizar.<br><br>" +
-          "Tente sair para uma área com melhor sinal de GPS/internet e clique novamente.";
+          "Tente uma área com melhor sinal de GPS/internet.";
       }
 
       setStatus("❌ " + msg, "erro");
@@ -445,7 +488,16 @@
         return;
       }
 
-      setStatus("Solicitando permissão de localização...", "aviso");
+      if (telaAtivaDesejada && !wakeLock) {
+        await pedirTelaAtiva();
+      }
+
+      setStatus(
+        "Solicitando permissão de localização...<br><br>" +
+        "Deixe esta página aberta durante a entrega para manter o envio mais estável.",
+        "aviso"
+      );
+
       atualizarBotoes(true);
 
       if (watchId !== null) {
@@ -477,9 +529,7 @@
         try {
           await fetch(`${FIREBASE_URL}/motoboys/${id}.json`, {
             method: "PATCH",
-            headers: {
-              "Content-Type": "application/json"
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               ativo: false,
               ultima_atualizacao: Date.now()
@@ -496,6 +546,19 @@
       atualizarBotoes(false);
     }
 
+    document.addEventListener("visibilitychange", async () => {
+      if (document.visibilityState === "visible" && telaAtivaDesejada && !wakeLock) {
+        await pedirTelaAtiva();
+      }
+
+      if (document.visibilityState === "hidden" && watchId !== null) {
+        setStatus(
+          "⚠️ A página foi para segundo plano. O celular pode pausar a localização. Para rastreamento contínuo, mantenha esta tela aberta.",
+          "aviso"
+        );
+      }
+    });
+
     window.addEventListener("beforeunload", () => {
       if (watchId !== null) {
         navigator.geolocation.clearWatch(watchId);
@@ -504,6 +567,7 @@
 
     mostrarDiagnosticoInicial();
     atualizarBotoes(false);
+    atualizarBotaoWake();
   </script>
 
 </body>
