@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rastreamento Motoboy - Dimensões Burguer</title>
+
+  <style>
+    :root {
+      --bg: #07110b;
+      --card: #111827;
+      --card2: #0f172a;
+      --border: #263244;
+      --green: #22c55e;
+      --green-dark: #15803d;
+      --red: #b91c1c;
+      --text: #f9fafb;
+      --muted: #d1d5db;
+      --purple: #7e22ce;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(34, 197, 94, 0.15), transparent 35%),
+        radial-gradient(circle at bottom, rgba(126, 34, 206, 0.16), transparent 35%),
+        var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 440px;
+      background: rgba(17, 24, 39, 0.96);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 24px;
+      box-shadow: 0 0 36px rgba(34, 197, 94, 0.18);
+      text-align: center;
+    }
+
+    .logo {
+      width: 74px;
+      height: 74px;
+      margin: 0 auto 12px;
+      border-radius: 50%;
+      border: 3px solid var(--green);
+      box-shadow: 0 0 24px rgba(34, 197, 94, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle, #22c55e 0%, #052e16 65%, #111827 100%);
+      font-size: 32px;
+    }
+
+    h1 {
+      color: var(--green);
+      font-size: 25px;
+      margin: 0 0 8px;
+      letter-spacing: 0.5px;
+    }
+
+    p {
+      color: var(--muted);
+      line-height: 1.45;
+      margin: 8px 0 16px;
+      font-size: 15px;
+    }
+
+    label {
+      display: block;
+      text-align: left;
+      font-weight: bold;
+      font-size: 14px;
+      color: var(--muted);
+      margin: 14px 0 6px;
+    }
+
+    input {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card2);
+      color: white;
+      font-size: 16px;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--green);
+      box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.18);
+    }
+
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 14px;
+      padding: 15px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 12px;
+      color: white;
+      transition: transform 0.08s ease, opacity 0.2s ease;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .iniciar {
+      background: linear-gradient(135deg, var(--green-dark), var(--green));
+    }
+
+    .parar {
+      background: linear-gradient(135deg, #7f1d1d, var(--red));
+    }
+
+    .status {
+      margin-top: 18px;
+      padding: 14px;
+      border-radius: 14px;
+      background: var(--card2);
+      color: var(--muted);
+      font-size: 14px;
+      min-height: 78px;
+      text-align: left;
+      border: 1px solid var(--border);
+      line-height: 1.45;
+    }
+
+    .ok {
+      color: #86efac;
+      border-color: rgba(34, 197, 94, 0.45);
+    }
+
+    .erro {
+      color: #fca5a5;
+      border-color: rgba(248, 113, 113, 0.45);
+    }
+
+    .aviso {
+      color: #fde68a;
+      border-color: rgba(253, 230, 138, 0.35);
+    }
+
+    .rodape {
+      margin-top: 14px;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <div class="logo">🛵</div>
+    <h1>Dimensões Burguer</h1>
+    <p>Rastreamento do motoboy em tempo real durante as entregas.</p>
+
+    <label for="nomeMotoboy">Nome do motoboy</label>
+    <input id="nomeMotoboy" placeholder="Ex: João" autocomplete="name">
+
+    <button id="btnIniciar" class="iniciar" onclick="iniciarRastreamento()">INICIAR RASTREAMENTO</button>
+    <button id="btnParar" class="parar" onclick="pararRastreamento()">PARAR RASTREAMENTO</button>
+
+    <div id="status" class="status aviso">
+      Aguardando iniciar...
+    </div>
+
+    <div class="rodape">
+      Use apenas durante o expediente/entregas e com autorização do motoboy.
+    </div>
+  </div>
+
+  <script>
+    const FIREBASE_URL = "https://dimensoesburguer-85c0f-default-rtdb.firebaseio.com";
+
+    let watchId = null;
+    let nomeAtual = "";
+    let ultimoEnvio = 0;
+
+    function limparNome(nome) {
+      return nome
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]/g, "_")
+        .replace(/_+/g, "_")
+        .replace(/^_|_$/g, "");
+    }
+
+    function setStatus(msg, tipo = "") {
+      const status = document.getElementById("status");
+      status.className = "status " + tipo;
+      status.innerHTML = msg;
+    }
+
+    function atualizarBotoes(rastreando) {
+      document.getElementById("btnIniciar").disabled = rastreando;
+      document.getElementById("btnParar").disabled = !rastreando;
+      document.getElementById("nomeMotoboy").disabled = rastreando;
+    }
+
+    async function enviarLocalizacao(position) {
+      const agora = Date.now();
+
+      // Evita spam excessivo no Firebase. Envia no máximo a cada 5 segundos.
+      if (agora - ultimoEnvio < 5000) {
+        return;
+      }
+      ultimoEnvio = agora;
+
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      const precisao = position.coords.accuracy;
+
+      const dados = {
+        nome: nomeAtual,
+        lat: lat,
+        lng: lng,
+        precisao: precisao,
+        ativo: true,
+        ultima_atualizacao: agora
+      };
+
+      const id = limparNome(nomeAtual);
+
+      try {
+        await fetch(`${FIREBASE_URL}/motoboys/${id}.json`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(dados)
+        });
+
+        setStatus(
+          `✅ Localização enviada com sucesso<br>
+           <b>Motoboy:</b> ${nomeAtual}<br>
+           <b>Latitude:</b> ${lat.toFixed(6)}<br>
+           <b>Longitude:</b> ${lng.toFixed(6)}<br>
+           <b>Precisão:</b> ${Math.round(precisao)}m<br>
+           <b>Horário:</b> ${new Date().toLocaleTimeString("pt-BR")}`,
+          "ok"
+        );
+      } catch (e) {
+        setStatus("❌ Erro ao enviar para o Firebase:<br>" + e.message, "erro");
+      }
+    }
+
+    function erroLocalizacao(error) {
+      let msg = "Erro ao pegar localização.";
+
+      if (error.code === 1) msg = "Permissão de localização negada.";
+      if (error.code === 2) msg = "Localização indisponível.";
+      if (error.code === 3) msg = "Tempo esgotado ao tentar localizar.";
+
+      setStatus("❌ " + msg, "erro");
+      atualizarBotoes(false);
+    }
+
+    function iniciarRastreamento() {
+      const nomeDigitado = document.getElementById("nomeMotoboy").value.trim();
+
+      if (!nomeDigitado) {
+        setStatus("Digite o nome do motoboy primeiro.", "erro");
+        return;
+      }
+
+      nomeAtual = nomeDigitado;
+
+      if (!navigator.geolocation) {
+        setStatus("Este celular/navegador não suporta localização.", "erro");
+        return;
+      }
+
+      setStatus("Solicitando permissão de localização...", "aviso");
+      atualizarBotoes(true);
+
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+
+      watchId = navigator.geolocation.watchPosition(
+        enviarLocalizacao,
+        erroLocalizacao,
+        {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 15000
+        }
+      );
+    }
+
+    async function pararRastreamento() {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+
+      const nomeDigitado = document.getElementById("nomeMotoboy").value.trim();
+      const nomeBase = nomeDigitado || nomeAtual;
+      const id = limparNome(nomeBase);
+
+      if (id) {
+        try {
+          await fetch(`${FIREBASE_URL}/motoboys/${id}.json`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              ativo: false,
+              ultima_atualizacao: Date.now()
+            })
+          });
+        } catch (e) {
+          setStatus("Rastreamento parado no celular, mas houve erro ao atualizar offline no Firebase.", "erro");
+          atualizarBotoes(false);
+          return;
+        }
+      }
+
+      setStatus("🛑 Rastreamento parado.", "aviso");
+      atualizarBotoes(false);
+    }
+
+    window.addEventListener("beforeunload", () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+    });
+
+    atualizarBotoes(false);
+  </script>
+
+</body>
+</html>
