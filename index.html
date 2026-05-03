@@ -17,6 +17,7 @@
       --text: #f9fafb;
       --muted: #d1d5db;
       --purple: #7e22ce;
+      --yellow: #facc15;
     }
 
     * {
@@ -40,7 +41,7 @@
 
     .card {
       width: 100%;
-      max-width: 440px;
+      max-width: 460px;
       background: rgba(17, 24, 39, 0.96);
       border: 1px solid var(--border);
       border-radius: 22px;
@@ -132,6 +133,10 @@
       background: linear-gradient(135deg, #7f1d1d, var(--red));
     }
 
+    .teste {
+      background: linear-gradient(135deg, #334155, #475569);
+    }
+
     .status {
       margin-top: 18px;
       padding: 14px;
@@ -143,6 +148,7 @@
       text-align: left;
       border: 1px solid var(--border);
       line-height: 1.45;
+      word-break: break-word;
     }
 
     .ok {
@@ -160,6 +166,18 @@
       border-color: rgba(253, 230, 138, 0.35);
     }
 
+    .info {
+      margin-top: 12px;
+      padding: 12px;
+      background: rgba(34, 197, 94, 0.08);
+      border: 1px solid rgba(34, 197, 94, 0.22);
+      border-radius: 14px;
+      text-align: left;
+      color: #d1d5db;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
     .rodape {
       margin-top: 14px;
       font-size: 12px;
@@ -174,9 +192,14 @@
     <h1>Dimensões Burguer</h1>
     <p>Rastreamento do motoboy em tempo real durante as entregas.</p>
 
+    <div id="avisoHttps" class="info">
+      Verificando se o navegador permite localização...
+    </div>
+
     <label for="nomeMotoboy">Nome do motoboy</label>
     <input id="nomeMotoboy" placeholder="Ex: João" autocomplete="name">
 
+    <button id="btnTeste" class="teste" onclick="testarPermissao()">TESTAR PERMISSÃO DE LOCALIZAÇÃO</button>
     <button id="btnIniciar" class="iniciar" onclick="iniciarRastreamento()">INICIAR RASTREAMENTO</button>
     <button id="btnParar" class="parar" onclick="pararRastreamento()">PARAR RASTREAMENTO</button>
 
@@ -217,6 +240,97 @@
       document.getElementById("btnIniciar").disabled = rastreando;
       document.getElementById("btnParar").disabled = !rastreando;
       document.getElementById("nomeMotoboy").disabled = rastreando;
+    }
+
+    function mostrarDiagnosticoInicial() {
+      const aviso = document.getElementById("avisoHttps");
+      const protocolo = window.location.protocol;
+      const host = window.location.hostname;
+      const href = window.location.href;
+
+      const seguro =
+        window.isSecureContext ||
+        protocolo === "https:" ||
+        host === "localhost" ||
+        host === "127.0.0.1";
+
+      if (!("geolocation" in navigator)) {
+        aviso.innerHTML = "❌ Este navegador não tem suporte a localização.";
+        aviso.style.borderColor = "rgba(248, 113, 113, 0.45)";
+        return false;
+      }
+
+      if (!seguro) {
+        aviso.innerHTML =
+          "⚠️ <b>O navegador NÃO vai liberar localização nesse endereço.</b><br><br>" +
+          "Você abriu como: <br><b>" + href + "</b><br><br>" +
+          "Para aparecer a opção de permitir localização, envie este arquivo para um site com <b>HTTPS</b>, como Firebase Hosting ou Vercel.<br><br>" +
+          "Abrir direto da pasta Downloads geralmente aparece como <b>file://</b> e não libera localização.";
+        aviso.style.borderColor = "rgba(253, 230, 138, 0.5)";
+        return false;
+      }
+
+      aviso.innerHTML =
+        "✅ Endereço seguro detectado. A permissão de localização deve aparecer ao clicar em <b>TESTAR</b> ou <b>INICIAR RASTREAMENTO</b>.";
+      aviso.style.borderColor = "rgba(34, 197, 94, 0.45)";
+      return true;
+    }
+
+    async function verificarPermissaoAPI() {
+      if (!navigator.permissions || !navigator.permissions.query) {
+        return "indisponivel";
+      }
+
+      try {
+        const result = await navigator.permissions.query({ name: "geolocation" });
+        return result.state; // granted, denied ou prompt
+      } catch (e) {
+        return "indisponivel";
+      }
+    }
+
+    async function testarPermissao() {
+      const seguro = mostrarDiagnosticoInicial();
+      const estado = await verificarPermissaoAPI();
+
+      if (!seguro) {
+        setStatus(
+          "⚠️ O problema é o endereço onde o arquivo foi aberto. Precisa estar em HTTPS para o celular mostrar a opção de permitir localização.",
+          "aviso"
+        );
+        return;
+      }
+
+      if (estado === "denied") {
+        setStatus(
+          "❌ A localização está bloqueada para este site/navegador.<br><br>" +
+          "No Android/Chrome: toque no cadeado ao lado do endereço do site > Permissões > Localização > Permitir.<br><br>" +
+          "Também confira se a localização do celular está ligada.",
+          "erro"
+        );
+        return;
+      }
+
+      setStatus("Solicitando localização de teste...", "aviso");
+
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          setStatus(
+            "✅ Permissão funcionando.<br>" +
+            "<b>Latitude:</b> " + pos.coords.latitude.toFixed(6) + "<br>" +
+            "<b>Longitude:</b> " + pos.coords.longitude.toFixed(6) + "<br>" +
+            "<b>Precisão:</b> " + Math.round(pos.coords.accuracy) + "m<br><br>" +
+            "Agora pode clicar em <b>INICIAR RASTREAMENTO</b>.",
+            "ok"
+          );
+        },
+        erroLocalizacao,
+        {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 15000
+        }
+      );
     }
 
     async function enviarLocalizacao(position) {
@@ -269,15 +383,54 @@
     function erroLocalizacao(error) {
       let msg = "Erro ao pegar localização.";
 
-      if (error.code === 1) msg = "Permissão de localização negada.";
-      if (error.code === 2) msg = "Localização indisponível.";
-      if (error.code === 3) msg = "Tempo esgotado ao tentar localizar.";
+      if (error.code === 1) {
+        msg =
+          "Permissão de localização negada ou bloqueada.<br><br>" +
+          "Faça assim no Android/Chrome:<br>" +
+          "1. Toque no cadeado ao lado do endereço do site.<br>" +
+          "2. Entre em Permissões.<br>" +
+          "3. Em Localização, marque Permitir.<br>" +
+          "4. Recarregue a página.<br><br>" +
+          "Se não aparecer o cadeado/permissão, provavelmente o arquivo não está em HTTPS.";
+      }
+
+      if (error.code === 2) {
+        msg =
+          "Localização indisponível.<br><br>" +
+          "Confira se a localização/GPS do celular está ligada.";
+      }
+
+      if (error.code === 3) {
+        msg =
+          "Tempo esgotado ao tentar localizar.<br><br>" +
+          "Tente sair para uma área com melhor sinal de GPS/internet e clique novamente.";
+      }
 
       setStatus("❌ " + msg, "erro");
       atualizarBotoes(false);
     }
 
-    function iniciarRastreamento() {
+    async function iniciarRastreamento() {
+      const seguro = mostrarDiagnosticoInicial();
+
+      if (!seguro) {
+        setStatus(
+          "⚠️ Não dá para iniciar enquanto o arquivo não estiver em HTTPS. Suba na Vercel ou Firebase Hosting e abra o link gerado.",
+          "aviso"
+        );
+        return;
+      }
+
+      const estado = await verificarPermissaoAPI();
+
+      if (estado === "denied") {
+        setStatus(
+          "❌ Localização já está bloqueada para este site/navegador. Libere nas permissões do site e recarregue a página.",
+          "erro"
+        );
+        return;
+      }
+
       const nomeDigitado = document.getElementById("nomeMotoboy").value.trim();
 
       if (!nomeDigitado) {
@@ -349,6 +502,7 @@
       }
     });
 
+    mostrarDiagnosticoInicial();
     atualizarBotoes(false);
   </script>
 
